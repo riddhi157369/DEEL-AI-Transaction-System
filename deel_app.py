@@ -7,15 +7,15 @@ import streamlit as st
 from datetime import datetime
 from collections import defaultdict
 
-# Streamlit 
+# Streamlit configuration
 st.set_page_config(
-    page_title="DEEL AI TRANSACTION SYSTEM ",
+    page_title="DEEL AI TRANSACTION SYSTEM",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS 
+# CSS styling
 st.markdown("""
 <style>
     .main-header {
@@ -617,10 +617,15 @@ class DeelTransactionSystem:
     
     def add_new_transaction(self, amount, description):
         """Add a new transaction"""
-        existing_ids = [t['id'] for t in self.transactions if t['id'] and str(t['id']).isdigit()]
-        if existing_ids:
-            numeric_ids = [int(id) for id in existing_ids if id.isdigit()]
-            new_id = str(max(numeric_ids) + 1) if numeric_ids else "1001"
+        # Get all numeric IDs
+        numeric_ids = []
+        for t in self.transactions:
+            if t['id'] and t['id'].isdigit():
+                numeric_ids.append(int(t['id']))
+        
+        # Generate new ID
+        if numeric_ids:
+            new_id = str(max(numeric_ids) + 1)
         else:
             new_id = "1001"
         
@@ -630,20 +635,33 @@ class DeelTransactionSystem:
             'description': description
         }
         
+        # Add to transactions list
         self.transactions.append(new_transaction)
+        # Save to CSV
         self.save_to_csv()
+        
+        # Update session state
+        if 'system' in st.session_state:
+            st.session_state.system.transactions = self.transactions
+        
+        # Update the system info in session state
+        if 'last_transaction_count' in st.session_state:
+            st.session_state.last_transaction_count = len(self.transactions)
+        
         return new_id, new_transaction
     
     def add_new_user(self, name):
         """Add a new user"""
-        existing_ids = [u['id'] for u in self.users if u['id']]
+        # Get all numeric parts from existing IDs
         numeric_ids = []
-        for id_str in existing_ids:
-            if id_str and any(c.isdigit() for c in id_str):
-                nums = re.findall(r'\d+', id_str)
-                if nums:
-                    numeric_ids.extend([int(n) for n in nums])
+        for u in self.users:
+            if u['id']:
+                # Extract numbers from ID
+                numbers = re.findall(r'\d+', u['id'])
+                if numbers:
+                    numeric_ids.extend([int(n) for n in numbers])
         
+        # Generate new ID
         if numeric_ids:
             new_num = max(numeric_ids) + 1
         else:
@@ -656,8 +674,19 @@ class DeelTransactionSystem:
             'name': name
         }
         
+        # Add to users list
         self.users.append(new_user)
+        # Save to CSV
         self.save_to_csv()
+        
+        # Update session state
+        if 'system' in st.session_state:
+            st.session_state.system.users = self.users
+        
+        # Update the system info in session state
+        if 'last_user_count' in st.session_state:
+            st.session_state.last_user_count = len(self.users)
+        
         return new_id
     
     def delete_transaction(self, transaction_id):
@@ -666,6 +695,15 @@ class DeelTransactionSystem:
             if transaction['id'] == transaction_id:
                 deleted_transaction = self.transactions.pop(i)
                 self.save_to_csv()
+                
+                # Update session state
+                if 'system' in st.session_state:
+                    st.session_state.system.transactions = self.transactions
+                
+                # Update the system info in session state
+                if 'last_transaction_count' in st.session_state:
+                    st.session_state.last_transaction_count = len(self.transactions)
+                
                 return True, deleted_transaction
         return False, None
     
@@ -675,6 +713,15 @@ class DeelTransactionSystem:
             if user['id'] == user_id:
                 deleted_user = self.users.pop(i)
                 self.save_to_csv()
+                
+                # Update session state
+                if 'system' in st.session_state:
+                    st.session_state.system.users = self.users
+                
+                # Update the system info in session state
+                if 'last_user_count' in st.session_state:
+                    st.session_state.last_user_count = len(self.users)
+                
                 return True, deleted_user
         return False, None
 
@@ -684,6 +731,22 @@ def main():
     # Initialize session state
     if 'system' not in st.session_state:
         st.session_state.system = DeelTransactionSystem()
+    
+    # Initialize form states
+    if 'add_user_submitted' not in st.session_state:
+        st.session_state.add_user_submitted = False
+    if 'add_transaction_submitted' not in st.session_state:
+        st.session_state.add_transaction_submitted = False
+    if 'new_user_data' not in st.session_state:
+        st.session_state.new_user_data = None
+    if 'new_transaction_data' not in st.session_state:
+        st.session_state.new_transaction_data = None
+    
+    # Store current counts in session state for immediate updates
+    if 'last_transaction_count' not in st.session_state:
+        st.session_state.last_transaction_count = len(st.session_state.system.transactions)
+    if 'last_user_count' not in st.session_state:
+        st.session_state.last_user_count = len(st.session_state.system.users)
     
     system = st.session_state.system
     
@@ -704,8 +767,23 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### System Info")
-    st.sidebar.metric("Total Transactions", len(system.transactions))
-    st.sidebar.metric("Total Users", len(system.users))
+    
+    # Update counts in session state if they've changed
+    current_transaction_count = len(system.transactions)
+    current_user_count = len(system.users)
+    
+    # Store the current counts in session state for next render
+    st.session_state.last_transaction_count = current_transaction_count
+    st.session_state.last_user_count = current_user_count
+    
+    # Display metrics with updated counts
+    st.sidebar.metric("Total Transactions", current_transaction_count)
+    st.sidebar.metric("Total Users", current_user_count)
+    
+    # Reset form states when navigating away from forms
+    if menu not in ["Add Transaction", "Add User"]:
+        st.session_state.add_user_submitted = False
+        st.session_state.add_transaction_submitted = False
     
     # Main Content Area
     if menu == "Dashboard":
@@ -939,88 +1017,174 @@ def main():
     elif menu == "Add Transaction":
         st.markdown("<h1 class='main-header'>➕ Add New Transaction</h1>", unsafe_allow_html=True)
         
-        with st.form("add_transaction_form"):
-            amount = st.number_input("Amount ($)", min_value=0.01, value=100.0, step=1.0)
-            description = st.text_area("Description", height=100)
+        # Check if we should show the form or the success message
+        if not st.session_state.add_transaction_submitted:
+            # Use a form key to track submissions
+            form_key = "add_transaction_form"
             
-            submit = st.form_submit_button("Add Transaction")
-            
-            if submit:
-                if amount and description:
-                    with st.spinner("Adding transaction..."):
-                        new_id, new_transaction = system.add_new_transaction(amount, description)
-                        
-                        st.markdown(f"""
-                        <div class='success-box'>
-                            ✅ Transaction added successfully!<br>
-                            <strong>ID:</strong> {new_id}<br>
-                            <strong>Amount:</strong> ${amount:.2f}<br>
-                            <strong>Description:</strong> {description}
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Find matches for new transaction
-                        st.markdown("<h3 class='sub-header'>Matching Users</h3>", unsafe_allow_html=True)
-                        matches, extracted_name, _ = system.find_user_matches_for_transaction(description)
-                        
-                        if matches:
-                            st.write(f"Extracted name: **{extracted_name}**")
-                            for match in matches[:3]:
-                                st.write(f"- {match['name']} (Match: {match['match_metric']:.3f})")
-                        else:
-                            st.info("No matching users found.")
-                        
-                        # Show JSON output
-                        st.markdown("<h3 class='sub-header'>Transaction JSON</h3>", unsafe_allow_html=True)
-                        transaction_json = {
-                            "transaction_added": True,
-                            "transaction_id": new_id,
-                            "transaction_details": new_transaction,
-                            "extracted_name": extracted_name,
-                            "matching_users": [
-                                {
-                                    "user_id": m["id"],
-                                    "user_name": m["name"],
-                                    "match_score": m["match_metric"]
-                                } for m in matches[:5]
-                            ]
-                        }
-                        display_json(transaction_json, "New Transaction Result")
+            with st.form(key=form_key):
+                amount = st.number_input("Amount ($)", min_value=0.01, value=100.0, step=1.0, key="amount_input")
+                description = st.text_area("Description", height=100, key="desc_input")
+                submit = st.form_submit_button("Add Transaction")
+                
+                if submit:
+                    if amount and description:
+                        with st.spinner("Adding transaction..."):
+                            new_id, new_transaction = system.add_new_transaction(amount, description)
+                            
+                            # Store result in session state
+                            st.session_state.new_transaction_data = {
+                                'transaction_id': new_id,
+                                'amount': amount,
+                                'description': description,
+                                'matches': system.find_user_matches_for_transaction(description)[0],
+                                'extracted_name': system.find_user_matches_for_transaction(description)[1]
+                            }
+                            st.session_state.add_transaction_submitted = True
+                            
+                            # Force a rerun to update sidebar and show success
+                            st.rerun()
+                    else:
+                        st.error("Please fill all fields")
+        else:
+            # Show success message and details
+            if st.session_state.new_transaction_data:
+                trans_data = st.session_state.new_transaction_data
+                
+                st.markdown("<h3 class='sub-header'>Transaction Added Successfully!</h3>", unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class='success-box'>
+                    ✅ Transaction added successfully!<br>
+                    <strong>ID:</strong> {trans_data['transaction_id']}<br>
+                    <strong>Amount:</strong> ${trans_data['amount']:.2f}<br>
+                    <strong>Description:</strong> {trans_data['description']}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Find matches for new transaction
+                st.markdown("<h3 class='sub-header'>Matching Users</h3>", unsafe_allow_html=True)
+                matches = trans_data['matches']
+                extracted_name = trans_data['extracted_name']
+                
+                if matches:
+                    st.write(f"Extracted name: **{extracted_name}**")
+                    for match in matches[:3]:
+                        st.write(f"- {match['name']} (Match: {match['match_metric']:.3f})")
                 else:
-                    st.error("Please fill all fields")
+                    st.info("No matching users found.")
+                
+                # Show JSON output
+                st.markdown("<h3 class='sub-header'>Transaction JSON</h3>", unsafe_allow_html=True)
+                transaction_json = {
+                    "transaction_added": True,
+                    "transaction_id": trans_data['transaction_id'],
+                    "transaction_details": {
+                        'id': trans_data['transaction_id'],
+                        'amount': trans_data['amount'],
+                        'description': trans_data['description']
+                    },
+                    "extracted_name": extracted_name,
+                    "matching_users": [
+                        {
+                            "user_id": m["id"],
+                            "user_name": m["name"],
+                            "match_score": m["match_metric"]
+                        } for m in matches[:5]
+                    ]
+                }
+                display_json(transaction_json, "New Transaction Result")
+                
+                # Show updated count
+                st.info(f"**Total transactions now:** {len(system.transactions)}")
+                
+                # Add buttons to add another or go back
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("➕ Add Another Transaction"):
+                        st.session_state.add_transaction_submitted = False
+                        st.session_state.new_transaction_data = None
+                        st.rerun()
+                with col2:
+                    if st.button("🏠 Go to Dashboard"):
+                        st.session_state.add_transaction_submitted = False
+                        st.session_state.new_transaction_data = None
+                        # Navigate to dashboard by changing the menu selection
+                        # We can't directly change the sidebar, so we'll show a message
+                        st.info("Please select 'Dashboard' from the sidebar")
+            else:
+                st.error("Error: No transaction data found")
     
     elif menu == "Add User":
         st.markdown("<h1 class='main-header'>👤 Add New User</h1>", unsafe_allow_html=True)
         
-        with st.form("add_user_form"):
-            name = st.text_input("Full Name")
+        # Check if we should show the form or the success message
+        if not st.session_state.add_user_submitted:
+            # Use a form key to track submissions
+            form_key = "add_user_form"
             
-            submit = st.form_submit_button("Add User")
-            
-            if submit:
-                if name:
-                    with st.spinner("Adding user..."):
-                        new_id = system.add_new_user(name)
-                        
-                        st.markdown(f"""
-                        <div class='success-box'>
-                            ✅ User added successfully!<br>
-                            <strong>ID:</strong> {new_id}<br>
-                            <strong>Name:</strong> {name}
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Show JSON output
-                        st.markdown("<h3 class='sub-header'>User JSON</h3>", unsafe_allow_html=True)
-                        user_json = {
-                            "user_added": True,
-                            "user_id": new_id,
-                            "user_name": name,
-                            "total_users_after_addition": len(system.users)
-                        }
-                        display_json(user_json, "New User Result")
-                else:
-                    st.error("Please enter a name")
+            with st.form(key=form_key):
+                name = st.text_input("Full Name", key="name_input")
+                submit = st.form_submit_button("Add User")
+                
+                if submit:
+                    if name:
+                        with st.spinner("Adding user..."):
+                            new_id = system.add_new_user(name)
+                            
+                            # Store result in session state
+                            st.session_state.new_user_data = {
+                                'user_id': new_id,
+                                'user_name': name
+                            }
+                            st.session_state.add_user_submitted = True
+                            
+                            # Force a rerun to update sidebar and show success
+                            st.rerun()
+                    else:
+                        st.error("Please enter a name")
+        else:
+            # Show success message and details
+            if st.session_state.new_user_data:
+                user_data = st.session_state.new_user_data
+                
+                st.markdown("<h3 class='sub-header'>User Added Successfully!</h3>", unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class='success-box'>
+                    ✅ User added successfully!<br>
+                    <strong>ID:</strong> {user_data['user_id']}<br>
+                    <strong>Name:</strong> {user_data['user_name']}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Show JSON output
+                st.markdown("<h3 class='sub-header'>User JSON</h3>", unsafe_allow_html=True)
+                user_json = {
+                    "user_added": True,
+                    "user_id": user_data['user_id'],
+                    "user_name": user_data['user_name'],
+                    "total_users_after_addition": len(system.users)
+                }
+                display_json(user_json, "New User Result")
+                
+                # Show updated count
+                st.info(f"**Total users now:** {len(system.users)}")
+                
+                # Add buttons to add another or go back
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("👤 Add Another User"):
+                        st.session_state.add_user_submitted = False
+                        st.session_state.new_user_data = None
+                        st.rerun()
+                with col2:
+                    if st.button("🏠 Go to Dashboard"):
+                        st.session_state.add_user_submitted = False
+                        st.session_state.new_user_data = None
+                        st.info("Please select 'Dashboard' from the sidebar")
+            else:
+                st.error("Error: No user data found")
     
     elif menu == "Delete Transaction":
         st.markdown("<h1 class='main-header'>🗑️ Delete Transaction</h1>", unsafe_allow_html=True)
@@ -1029,7 +1193,7 @@ def main():
         
         with col1:
             st.markdown("<h3 class='sub-header'>Search Transaction</h3>", unsafe_allow_html=True)
-            search_term = st.text_input("Search transaction by ID or description:")
+            search_term = st.text_input("Search transaction by ID or description:", key="search_trans_del")
             
             filtered_transactions = []
             if search_term:
@@ -1038,7 +1202,7 @@ def main():
                     if search_term.lower() in t['id'].lower() or search_term.lower() in t['description'].lower()
                 ]
             else:
-                filtered_transactions = system.transactions[:10]  # Show first 10 if no search
+                filtered_transactions = system.transactions[-10:]  # Show last 10 if no search
             
             if filtered_transactions:
                 st.write(f"Found {len(filtered_transactions)} transactions")
@@ -1065,6 +1229,7 @@ def main():
                                             <strong>Amount:</strong> ${deleted_transaction['amount']:.2f}
                                         </div>
                                         """, unsafe_allow_html=True)
+                                        # Force rerun to update sidebar
                                         st.rerun()
                                     else:
                                         st.error("Failed to delete transaction.")
@@ -1073,44 +1238,44 @@ def main():
         
         with col2:
             st.markdown("<h3 class='sub-header'>Delete by ID</h3>", unsafe_allow_html=True)
-            transaction_id_to_delete = st.text_input("Enter Transaction ID to delete:")
+            transaction_id_to_delete = st.text_input("Enter Transaction ID to delete:", key="trans_id_del")
+            confirm = st.checkbox("I confirm I want to delete this transaction")
             
-            if st.button("🗑️ Delete Transaction", type="primary", use_container_width=True):
+            # Create a unique key for the delete button
+            delete_key = f"delete_trans_{transaction_id_to_delete}"
+            
+            if st.button("🗑️ Delete Transaction", key=delete_key, type="primary", use_container_width=True, disabled=not confirm):
                 if transaction_id_to_delete:
-                    # Confirmation
-                    col_confirm1, col_confirm2 = st.columns(2)
-                    with col_confirm1:
-                        confirm = st.checkbox("I confirm I want to delete this transaction")
-                    with col_confirm2:
-                        if confirm and st.button("Confirm Delete", type="secondary"):
-                            with st.spinner("Deleting transaction..."):
-                                success, deleted_transaction = system.delete_transaction(transaction_id_to_delete)
-                                if success:
-                                    st.markdown(f"""
-                                    <div class='success-box'>
-                                        ✅ Transaction deleted successfully!<br>
-                                        <strong>ID:</strong> {deleted_transaction['id']}<br>
-                                        <strong>Amount:</strong> ${deleted_transaction['amount']:.2f}<br>
-                                        <strong>Description:</strong> {deleted_transaction['description'][:50]}...
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    # Show JSON output
-                                    st.markdown("<h3 class='sub-header'>Deletion JSON</h3>", unsafe_allow_html=True)
-                                    deletion_json = {
-                                        "transaction_deleted": True,
-                                        "deleted_transaction": deleted_transaction,
-                                        "remaining_transactions": len(system.transactions)
-                                    }
-                                    display_json(deletion_json, "Transaction Deletion Result")
-                                    st.rerun()
-                                else:
-                                    st.markdown("""
-                                    <div class='error-box'>
-                                        ❌ Transaction not found!<br>
-                                        Please check the Transaction ID.
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                    with st.spinner("Deleting transaction..."):
+                        success, deleted_transaction = system.delete_transaction(transaction_id_to_delete)
+                        if success:
+                            st.markdown(f"""
+                            <div class='success-box'>
+                                ✅ Transaction deleted successfully!<br>
+                                <strong>ID:</strong> {deleted_transaction['id']}<br>
+                                <strong>Amount:</strong> ${deleted_transaction['amount']:.2f}<br>
+                                <strong>Description:</strong> {deleted_transaction['description'][:50]}...
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Show JSON output
+                            st.markdown("<h3 class='sub-header'>Deletion JSON</h3>", unsafe_allow_html=True)
+                            deletion_json = {
+                                "transaction_deleted": True,
+                                "deleted_transaction": deleted_transaction,
+                                "remaining_transactions": len(system.transactions)
+                            }
+                            display_json(deletion_json, "Transaction Deletion Result")
+                            
+                            # Force rerun to update sidebar
+                            st.rerun()
+                        else:
+                            st.markdown("""
+                            <div class='error-box'>
+                                ❌ Transaction not found!<br>
+                                Please check the Transaction ID.
+                            </div>
+                            """, unsafe_allow_html=True)
                 else:
                     st.warning("Please enter a Transaction ID")
     
@@ -1121,7 +1286,7 @@ def main():
         
         with col1:
             st.markdown("<h3 class='sub-header'>Search User</h3>", unsafe_allow_html=True)
-            search_term = st.text_input("Search user by ID or name:")
+            search_term = st.text_input("Search user by ID or name:", key="search_user_del")
             
             filtered_users = []
             if search_term:
@@ -1130,7 +1295,7 @@ def main():
                     if search_term.lower() in u['id'].lower() or search_term.lower() in u['name'].lower()
                 ]
             else:
-                filtered_users = system.users[:10]  # Show first 10 if no search
+                filtered_users = system.users[-10:]  # Show last 10 if no search
             
             if filtered_users:
                 st.write(f"Found {len(filtered_users)} users")
@@ -1156,6 +1321,7 @@ def main():
                                             <strong>Name:</strong> {deleted_user['name']}
                                         </div>
                                         """, unsafe_allow_html=True)
+                                        # Force rerun to update sidebar
                                         st.rerun()
                                     else:
                                         st.error("Failed to delete user.")
@@ -1164,50 +1330,50 @@ def main():
         
         with col2:
             st.markdown("<h3 class='sub-header'>Delete by ID</h3>", unsafe_allow_html=True)
-            user_id_to_delete = st.text_input("Enter User ID to delete:")
+            user_id_to_delete = st.text_input("Enter User ID to delete:", key="user_id_del")
+            confirm = st.checkbox("I confirm I want to delete this user")
             
-            if st.button("🗑️ Delete User", type="primary", use_container_width=True):
+            # Create a unique key for the delete button
+            delete_key = f"delete_user_{user_id_to_delete}"
+            
+            if st.button("🗑️ Delete User", key=delete_key, type="primary", use_container_width=True, disabled=not confirm):
                 if user_id_to_delete:
-                    # Confirmation
-                    col_confirm1, col_confirm2 = st.columns(2)
-                    with col_confirm1:
-                        confirm = st.checkbox("I confirm I want to delete this user")
-                    with col_confirm2:
-                        if confirm and st.button("Confirm Delete", type="secondary"):
-                            with st.spinner("Deleting user..."):
-                                success, deleted_user = system.delete_user(user_id_to_delete)
-                                if success:
-                                    st.markdown(f"""
-                                    <div class='success-box'>
-                                        ✅ User deleted successfully!<br>
-                                        <strong>ID:</strong> {deleted_user['id']}<br>
-                                        <strong>Name:</strong> {deleted_user['name']}
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    # Show JSON output
-                                    st.markdown("<h3 class='sub-header'>Deletion JSON</h3>", unsafe_allow_html=True)
-                                    deletion_json = {
-                                        "user_deleted": True,
-                                        "deleted_user": deleted_user,
-                                        "remaining_users": len(system.users)
-                                    }
-                                    display_json(deletion_json, "User Deletion Result")
-                                    st.rerun()
-                                else:
-                                    st.markdown("""
-                                    <div class='error-box'>
-                                        ❌ User not found!<br>
-                                        Please check the User ID.
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                    with st.spinner("Deleting user..."):
+                        success, deleted_user = system.delete_user(user_id_to_delete)
+                        if success:
+                            st.markdown(f"""
+                            <div class='success-box'>
+                                ✅ User deleted successfully!<br>
+                                <strong>ID:</strong> {deleted_user['id']}<br>
+                                <strong>Name:</strong> {deleted_user['name']}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Show JSON output
+                            st.markdown("<h3 class='sub-header'>Deletion JSON</h3>", unsafe_allow_html=True)
+                            deletion_json = {
+                                "user_deleted": True,
+                                "deleted_user": deleted_user,
+                                "remaining_users": len(system.users)
+                            }
+                            display_json(deletion_json, "User Deletion Result")
+                            
+                            # Force rerun to update sidebar
+                            st.rerun()
+                        else:
+                            st.markdown("""
+                            <div class='error-box'>
+                                ❌ User not found!<br>
+                                Please check the User ID.
+                            </div>
+                            """, unsafe_allow_html=True)
                 else:
                     st.warning("Please enter a User ID")
     
     elif menu == "View Transactions":
         st.markdown("<h1 class='main-header'>📋 All Transactions</h1>", unsafe_allow_html=True)
         
-        search_term = st.text_input("Search in transactions:")
+        search_term = st.text_input("Search in transactions:", key="search_trans_view")
         
         if search_term:
             filtered_transactions = [t for t in system.transactions if search_term.lower() in t['description'].lower()]
@@ -1234,7 +1400,7 @@ def main():
         # Pagination
         items_per_page = 20
         total_pages = max(1, (len(filtered_transactions) + items_per_page - 1) // items_per_page)
-        page = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
+        page = st.number_input("Page", min_value=1, max_value=total_pages, value=1, key="trans_page")
         
         start_idx = (page - 1) * items_per_page
         end_idx = min(start_idx + items_per_page, len(filtered_transactions))
@@ -1252,7 +1418,7 @@ def main():
     elif menu == "View Users":
         st.markdown("<h1 class='main-header'>👥 All Users</h1>", unsafe_allow_html=True)
         
-        search_term = st.text_input("Search in users:")
+        search_term = st.text_input("Search in users:", key="search_users_view")
         
         if search_term:
             filtered_users = [u for u in system.users if search_term.lower() in u['name'].lower()]
